@@ -18,17 +18,11 @@ self.addEventListener('install', (event) => {
     const cache = await caches.open(CACHE_NAME);
     await cache.addAll(APP_SHELL);
 
-    await Promise.all(STARTUP_DEPENDENCIES.map(async (url) => {
-      try {
-        const request = new Request(url, { mode: 'no-cors', cache: 'reload' });
-        const response = await fetch(request);
-        if (response) {
-          await cache.put(url, response.clone());
-        }
-      } catch (error) {
-        console.warn('Failed to precache startup dependency:', url, error);
-      }
-    }));
+await Promise.all(STARTUP_DEPENDENCIES.map(async (url) => {
+  const request = new Request(url, { mode: 'no-cors', cache: 'reload' });
+  const response = await fetch(request);
+  await cache.put(url, response.clone());
+}));
   })().then(() => self.skipWaiting()));
 });
 
