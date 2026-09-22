@@ -1548,8 +1548,21 @@
       });
     }
 
+    function registerServiceWorker() {
+      if (!('serviceWorker' in navigator)) return;
+
+      const buildRevision = encodeURIComponent(document.lastModified || 'dev');
+      const serviceWorkerUrl = `./sw.js?v=${buildRevision}`;
+      navigator.serviceWorker.register(serviceWorkerUrl).catch((error) => {
+        console.warn('Service worker registration failed:', error);
+      });
+    }
+
     // Launch Application
-    window.onload = initApp;
+    window.onload = () => {
+      initApp();
+      registerServiceWorker();
+    };
   </script>
 </body>
 </html>
