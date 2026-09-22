@@ -1,0 +1,1555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mini Connect 4 - Mobile Edition</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Canvas Confetti CDN for victory celebration -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    /* Prevent text selection and rubber-banding on touch devices */
+    body {
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+      overscroll-behavior: none;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+
+    /* Theme CSS Variables */
+    :root {
+      --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      --board-color: #1e40af;
+      --board-shadow: #1e3a8a;
+      --p1-color: #ef4444;
+      --p1-glow: rgba(239, 68, 68, 0.6);
+      --p2-color: #eab308;
+      --p2-glow: rgba(234, 179, 8, 0.6);
+      --slot-bg: #0f172a;
+    }
+
+    .theme-neon {
+      --bg-gradient: linear-gradient(135deg, #090d16 0%, #111827 100%);
+      --board-color: #0f172a;
+      --board-shadow: #0284c7;
+      --p1-color: #f43f5e;
+      --p1-glow: rgba(244, 63, 94, 0.8);
+      --p2-color: #06b6d4;
+      --p2-glow: rgba(6, 182, 212, 0.8);
+      --slot-bg: #030712;
+    }
+
+    .theme-slate {
+      --bg-gradient: linear-gradient(135deg, #18181b 0%, #27272a 100%);
+      --board-color: #3f3f46;
+      --board-shadow: #27272a;
+      --p1-color: #10b981;
+      --p1-glow: rgba(16, 185, 129, 0.6);
+      --p2-color: #f59e0b;
+      --p2-glow: rgba(245, 158, 11, 0.6);
+      --slot-bg: #18181b;
+    }
+
+    .theme-sunset {
+      --bg-gradient: linear-gradient(135deg, #2e1065 0%, #4c1d95 100%);
+      --board-color: #581c87;
+      --board-shadow: #3b0764;
+      --p1-color: #f97316;
+      --p1-glow: rgba(249, 115, 22, 0.7);
+      --p2-color: #a855f7;
+      --p2-glow: rgba(168, 85, 247, 0.7);
+      --slot-bg: #1e1b4b;
+    }
+
+    body {
+      background: var(--bg-gradient);
+    }
+
+    /* Grid board drop shadow frame */
+    .board-frame {
+      background-color: var(--board-color);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.2);
+    }
+
+    /* Slot Mask logic for realistic connect 4 hole depth */
+    .board-slot {
+      background-color: var(--slot-bg);
+      box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.8), inset -1px -1px 3px rgba(255, 255, 255, 0.1);
+    }
+
+    /* Token styling */
+    .token-p1 {
+      background: radial-gradient(circle at 35% 35%, #fca5a5 0%, var(--p1-color) 60%, #b91c1c 100%);
+      box-shadow: 0 4px 10px var(--p1-glow), inset 0 2px 4px rgba(255, 255, 255, 0.4);
+    }
+
+    .token-p2 {
+      background: radial-gradient(circle at 35% 35%, #fef08a 0%, var(--p2-color) 60%, #a16207 100%);
+      box-shadow: 0 4px 10px var(--p2-glow), inset 0 2px 4px rgba(255, 255, 255, 0.4);
+    }
+
+    /* Piece drop bounce animation */
+    @keyframes dropBounce {
+      0% {
+        transform: translateY(var(--drop-distance, -300px));
+        animation-timing-function: ease-in;
+      }
+      70% {
+        transform: translateY(0);
+        animation-timing-function: ease-out;
+      }
+      85% {
+        transform: translateY(-12px);
+        animation-timing-function: ease-in;
+      }
+      100% {
+        transform: translateY(0);
+      }
+    }
+
+    .animate-drop {
+      animation: dropBounce 0.42s forwards;
+    }
+
+    /* Winning pulsing glow effect */
+    @keyframes winPulse {
+      0%, 100% { transform: scale(1); filter: brightness(1.2); }
+      50% { transform: scale(1.12); filter: brightness(1.5); }
+    }
+
+    .winning-token {
+      animation: winPulse 0.8s infinite ease-in-out;
+      z-index: 20;
+    }
+
+    /* Glassmorphic panel effect */
+    .glass-panel {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Ghost drop column highlight */
+    .column-hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
+  </style>
+</head>
+<body class="min-h-screen text-white flex flex-col items-center justify-between p-3 sm:p-5 select-none overflow-x-hidden">
+
+  <!-- Header & Scoreboard -->
+  <header class="w-full max-w-md flex flex-col gap-2">
+    <!-- Top Nav Controls -->
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="p-2 rounded-xl bg-indigo-600/30 border border-indigo-500/30">
+          <i data-lucide="layout-grid" class="w-5 h-5 text-indigo-400"></i>
+        </div>
+        <h1 class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+          Mini Connect 4
+        </h1>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <!-- History Button -->
+        <button id="btn-history" class="p-2.5 rounded-full glass-panel active:scale-95 transition-transform relative" aria-label="Match History">
+          <i data-lucide="history" class="w-5 h-5 text-slate-300"></i>
+          <span id="history-badge" class="hidden absolute -top-1 -right-1 w-4 h-4 bg-indigo-500 text-white font-bold text-[10px] rounded-full flex items-center justify-center">0</span>
+        </button>
+        <button id="btn-sound" class="p-2.5 rounded-full glass-panel active:scale-95 transition-transform" aria-label="Toggle Sound">
+          <i id="icon-sound" data-lucide="volume-2" class="w-5 h-5 text-slate-300"></i>
+        </button>
+        <button id="btn-settings" class="p-2.5 rounded-full glass-panel active:scale-95 transition-transform" aria-label="Settings">
+          <i data-lucide="settings" class="w-5 h-5 text-slate-300"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Score Board Card -->
+    <div class="glass-panel rounded-2xl p-3 flex items-center justify-between shadow-lg">
+      <!-- Player 1 Score -->
+      <div id="p1-card" class="flex items-center gap-2.5 p-2 rounded-xl transition-all duration-300">
+        <div class="w-8 h-8 rounded-full token-p1 flex items-center justify-center font-bold text-xs text-white shadow-md">P1</div>
+        <div class="flex flex-col">
+          <span id="p1-label" class="text-xs font-semibold text-slate-300">Player 1</span>
+          <span id="p1-score" class="text-lg font-black text-white leading-none">0</span>
+        </div>
+      </div>
+
+      <!-- Turn / Status Indicator -->
+      <div class="flex flex-col items-center px-2">
+        <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1">Status</span>
+        <div id="status-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-200 border border-slate-700 flex items-center gap-1.5">
+          <div id="turn-dot" class="w-2.5 h-2.5 rounded-full token-p1 animate-ping"></div>
+          <span id="status-text">Your Turn</span>
+        </div>
+      </div>
+
+      <!-- Player 2 / AI Score -->
+      <div id="p2-card" class="flex items-center gap-2.5 p-2 rounded-xl transition-all duration-300">
+        <div class="flex flex-col items-end">
+          <span id="p2-label" class="text-xs font-semibold text-slate-300">AI (Hard)</span>
+          <span id="p2-score" class="text-lg font-black text-white leading-none">0</span>
+        </div>
+        <div class="w-8 h-8 rounded-full token-p2 flex items-center justify-center font-bold text-xs text-slate-900 shadow-md">P2</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Game Area -->
+  <main class="w-full max-w-md flex flex-col items-center justify-center my-auto py-2">
+
+    <!-- Drop Indicator Zone (Above Board) -->
+    <div id="drop-indicator-zone" class="w-full h-10 mb-1 relative flex items-center">
+      <div id="drop-preview-token" class="absolute w-8 h-8 sm:w-10 sm:h-10 rounded-full token-p1 transition-all duration-150 transform -translate-x-1/2 opacity-0 pointer-events-none shadow-lg"></div>
+    </div>
+
+    <!-- Interactive Grid Board -->
+    <div id="board-container" class="w-full relative touch-none select-none">
+      <!-- Outer Board Frame -->
+      <div id="board-grid" class="board-frame rounded-2xl p-2.5 sm:p-3.5 grid gap-2 sm:gap-2.5 relative overflow-hidden transition-all duration-300">
+        <!-- Cells generated dynamically in JS -->
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Bottom Control Toolbar (Normal Game) -->
+  <footer id="normal-footer" class="w-full max-w-md flex items-center justify-between gap-3">
+    <button id="btn-undo" class="flex-1 py-3 px-4 rounded-xl glass-panel font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all text-slate-200 disabled:opacity-40 disabled:pointer-events-none">
+      <i data-lucide="undo-2" class="w-4 h-4"></i>
+      <span>Undo</span>
+    </button>
+
+    <button id="btn-restart" class="flex-1 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 active:scale-95 transition-all text-white">
+      <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+      <span>New Game</span>
+    </button>
+  </footer>
+
+  <!-- Replay Bottom Toolbar (Hidden by default) -->
+  <footer id="replay-footer" class="hidden w-full max-w-md flex flex-col gap-2 glass-panel p-3 rounded-2xl border border-indigo-500/40 bg-slate-900/90 shadow-xl">
+    <div class="flex items-center justify-between px-1">
+      <div class="flex items-center gap-1.5 text-xs font-bold text-indigo-400">
+        <i data-lucide="tv" class="w-4 h-4 animate-pulse"></i>
+        <span>REPLAY MODE</span>
+      </div>
+      <span id="replay-move-counter" class="text-xs font-mono font-semibold text-slate-300">Move 0 / 0</span>
+      <button id="btn-exit-replay" class="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-semibold flex items-center gap-1 active:scale-95 transition-all">
+        <i data-lucide="x" class="w-3.5 h-3.5"></i> Exit Replay
+      </button>
+    </div>
+
+    <!-- Move Progress Scrubber Slider -->
+    <input id="replay-slider" type="range" min="0" max="0" value="0" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
+
+    <!-- Playback Controls -->
+    <div class="flex items-center justify-between gap-1 mt-1">
+      <button id="btn-replay-start" class="p-2 rounded-xl hover:bg-slate-800 text-slate-300 active:scale-95" title="Start">
+        <i data-lucide="skip-back" class="w-4 h-4"></i>
+      </button>
+      <button id="btn-replay-prev" class="p-2 rounded-xl hover:bg-slate-800 text-slate-300 active:scale-95" title="Previous Move">
+        <i data-lucide="chevron-left" class="w-5 h-5"></i>
+      </button>
+      <button id="btn-replay-play" class="p-2.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-md active:scale-95" title="Play/Pause">
+        <i id="icon-replay-play" data-lucide="play" class="w-5 h-5"></i>
+      </button>
+      <button id="btn-replay-next" class="p-2 rounded-xl hover:bg-slate-800 text-slate-300 active:scale-95" title="Next Move">
+        <i data-lucide="chevron-right" class="w-5 h-5"></i>
+      </button>
+      <button id="btn-replay-end" class="p-2 rounded-xl hover:bg-slate-800 text-slate-300 active:scale-95" title="End">
+        <i data-lucide="skip-forward" class="w-4 h-4"></i>
+      </button>
+      <button id="btn-replay-speed" class="px-2 py-1 rounded-lg bg-slate-800 text-indigo-300 font-mono text-xs font-bold border border-slate-700 active:scale-95" title="Playback Speed">
+        1x
+      </button>
+    </div>
+  </footer>
+
+  <!-- Settings Modal Overlay -->
+  <div id="modal-settings" class="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="glass-panel w-full max-w-sm rounded-2xl p-5 border border-slate-700 bg-slate-900/90 text-white shadow-2xl transform scale-95 transition-transform duration-300 flex flex-col gap-4">
+
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h2 class="text-lg font-bold flex items-center gap-2">
+          <i data-lucide="sliders" class="w-5 h-5 text-indigo-400"></i> Game Options
+        </h2>
+        <button id="btn-close-settings" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Mode Selection -->
+      <div class="flex flex-col gap-1.5">
+        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Opponent Mode</label>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="mode-ai" class="py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all border-indigo-500 bg-indigo-600/20 text-white">
+            <i data-lucide="bot" class="w-4 h-4"></i> vs AI
+          </button>
+          <button id="mode-pvp" class="py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all border-slate-700 bg-slate-800/50 text-slate-400">
+            <i data-lucide="users" class="w-4 h-4"></i> Pass & Play
+          </button>
+        </div>
+      </div>
+
+      <!-- AI Difficulty (conditional) -->
+      <div id="ai-diff-section" class="flex flex-col gap-1.5">
+        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">AI Skill Level</label>
+        <div class="grid grid-cols-3 gap-2">
+          <button data-diff="easy" class="btn-diff py-2 px-2 rounded-xl border text-xs font-bold border-slate-700 bg-slate-800/50 text-slate-400">Easy</button>
+          <button data-diff="medium" class="btn-diff py-2 px-2 rounded-xl border text-xs font-bold border-slate-700 bg-slate-800/50 text-slate-400">Medium</button>
+          <button data-diff="hard" class="btn-diff py-2 px-2 rounded-xl border text-xs font-bold border-indigo-500 bg-indigo-600/20 text-white">Pro AI</button>
+        </div>
+      </div>
+
+      <!-- Grid Size Mode -->
+      <div class="flex flex-col gap-1.5">
+        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Board Size</label>
+        <div class="grid grid-cols-3 gap-2">
+          <button data-grid="mini" class="btn-grid py-2 px-2 rounded-xl border text-xs font-bold border-indigo-500 bg-indigo-600/20 text-white flex flex-col items-center">
+            <span>Mini</span>
+            <span class="text-[10px] font-normal opacity-70">5x6 (Connect 4)</span>
+          </button>
+          <button data-grid="micro" class="btn-grid py-2 px-2 rounded-xl border text-xs font-bold border-slate-700 bg-slate-800/50 text-slate-400 flex flex-col items-center">
+            <span>Micro</span>
+            <span class="text-[10px] font-normal opacity-70">4x5 (Connect 3)</span>
+          </button>
+          <button data-grid="classic" class="btn-grid py-2 px-2 rounded-xl border text-xs font-bold border-slate-700 bg-slate-800/50 text-slate-400 flex flex-col items-center">
+            <span>Classic</span>
+            <span class="text-[10px] font-normal opacity-70">6x7 (Connect 4)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Visual Theme Selection -->
+      <div class="flex flex-col gap-1.5">
+        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Visual Theme</label>
+        <div class="grid grid-cols-4 gap-2">
+          <button data-theme="arcade" class="btn-theme p-2 rounded-xl border border-indigo-500 flex flex-col items-center gap-1 bg-slate-800">
+            <div class="flex gap-1"><span class="w-3 h-3 rounded-full bg-red-500"></span><span class="w-3 h-3 rounded-full bg-yellow-500"></span></div>
+            <span class="text-[10px] font-semibold">Arcade</span>
+          </button>
+          <button data-theme="neon" class="btn-theme p-2 rounded-xl border border-slate-700 flex flex-col items-center gap-1 bg-slate-800">
+            <div class="flex gap-1"><span class="w-3 h-3 rounded-full bg-rose-500"></span><span class="w-3 h-3 rounded-full bg-cyan-400"></span></div>
+            <span class="text-[10px] font-semibold">Neon</span>
+          </button>
+          <button data-theme="slate" class="btn-theme p-2 rounded-xl border border-slate-700 flex flex-col items-center gap-1 bg-slate-800">
+            <div class="flex gap-1"><span class="w-3 h-3 rounded-full bg-emerald-500"></span><span class="w-3 h-3 rounded-full bg-amber-500"></span></div>
+            <span class="text-[10px] font-semibold">Slate</span>
+          </button>
+          <button data-theme="sunset" class="btn-theme p-2 rounded-xl border border-slate-700 flex flex-col items-center gap-1 bg-slate-800">
+            <div class="flex gap-1"><span class="w-3 h-3 rounded-full bg-orange-500"></span><span class="w-3 h-3 rounded-full bg-purple-500"></span></div>
+            <span class="text-[10px] font-semibold">Sunset</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Reset Stats -->
+      <button id="btn-reset-scores" class="mt-1 py-2 text-xs font-semibold text-rose-400 hover:text-rose-300 flex items-center justify-center gap-1">
+        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Reset Score History
+      </button>
+
+    </div>
+  </div>
+
+  <!-- Match History Modal Overlay -->
+  <div id="modal-history" class="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="glass-panel w-full max-w-sm rounded-2xl p-5 border border-slate-700 bg-slate-900/95 text-white shadow-2xl transform scale-95 transition-transform duration-300 flex flex-col gap-3 max-h-[85vh]">
+
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h2 class="text-lg font-bold flex items-center gap-2">
+          <i data-lucide="history" class="w-5 h-5 text-indigo-400"></i> Match History
+        </h2>
+        <div class="flex items-center gap-2">
+          <button id="btn-clear-history" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-rose-400 transition-colors" title="Clear History">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </button>
+          <button id="btn-close-history" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- History List Container -->
+      <div id="history-list" class="flex flex-col gap-2.5 overflow-y-auto pr-1 max-h-[55vh]">
+        <!-- Dynamic match cards generated in JS -->
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Game Over Celebration / Draw Modal -->
+  <div id="modal-gameover" class="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="glass-panel w-full max-w-xs rounded-2xl p-6 border border-slate-700 bg-slate-900/90 text-center shadow-2xl transform scale-90 transition-transform duration-300 flex flex-col items-center gap-4">
+
+      <!-- Winner Badge Icon -->
+      <div id="winner-icon-container" class="w-16 h-16 rounded-full flex items-center justify-center shadow-xl animate-bounce">
+        <i data-lucide="trophy" class="w-8 h-8 text-white"></i>
+      </div>
+
+      <div class="flex flex-col">
+        <h3 id="winner-title" class="text-2xl font-black tracking-tight text-white">PLAYER 1 WINS!</h3>
+        <p id="winner-subtitle" class="text-xs text-slate-400 mt-1">4 in a row achieved!</p>
+      </div>
+
+      <div class="flex w-full gap-2">
+        <button id="btn-gameover-replay" class="flex-1 py-3 px-3 rounded-xl glass-panel font-semibold text-xs flex items-center justify-center gap-1.5 text-slate-200 active:scale-95 transition-all hover:bg-slate-800">
+          <i data-lucide="tv" class="w-4 h-4 text-indigo-400"></i> Replay
+        </button>
+        <button id="btn-play-again" class="flex-1 py-3 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold text-xs text-white shadow-lg shadow-indigo-600/40 active:scale-95 transition-all flex items-center justify-center gap-1.5">
+          <i data-lucide="play" class="w-4 h-4"></i> Play Again
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio Synthesizer (Web Audio API) -->
+  <script>
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) this.ctx = new AudioContext();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      toggleSound() {
+        this.enabled = !this.enabled;
+        return this.enabled;
+      }
+
+      playDrop() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        const now = this.ctx.currentTime;
+        
+        // Pitch drop sound
+        osc.frequency.setValueAtTime(420, now);
+        osc.frequency.exponentialRampToValueAtTime(110, now + 0.18);
+
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.18);
+      }
+
+      playClick() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+
+        const now = this.ctx.currentTime;
+        osc.frequency.setValueAtTime(600, now);
+        osc.frequency.exponentialRampToValueAtTime(300, now + 0.05);
+
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.05);
+      }
+
+      playWin() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const notes = [261.63, 329.63, 392.00, 523.25]; // C E G C arpeggio
+        
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+
+          gain.gain.setValueAtTime(0.3, now + idx * 0.1);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.3);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc.start(now + idx * 0.1);
+          osc.stop(now + idx * 0.1 + 0.3);
+        });
+      }
+
+      playError() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+
+        const now = this.ctx.currentTime;
+        osc.frequency.setValueAtTime(140, now);
+        osc.frequency.setValueAtTime(110, now + 0.08);
+
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.2);
+      }
+    }
+
+    const sounds = new SoundEngine();
+
+    function triggerHaptic(type = 'light') {
+      if ('vibrate' in navigator) {
+        if (type === 'light') navigator.vibrate(10);
+        else if (type === 'medium') navigator.vibrate(25);
+        else if (type === 'win') navigator.vibrate([40, 60, 80, 60, 120]);
+      }
+    }
+  </script>
+
+  <!-- Core Game Logic and Controller -->
+  <script>
+    // Config Presets
+    const GRID_PRESETS = {
+      mini: { rows: 5, cols: 6, winCount: 4, name: 'Mini (5x6)' },
+      micro: { rows: 4, cols: 5, winCount: 3, name: 'Micro (4x5)' },
+      classic: { rows: 6, cols: 7, winCount: 4, name: 'Classic (6x7)' }
+    };
+
+    // State Variables
+    let currentGridKey = 'mini';
+    let { rows, cols, winCount } = GRID_PRESETS[currentGridKey];
+    
+    let board = []; // 2D Array: 0 = Empty, 1 = P1, 2 = P2
+    let currentPlayer = 1; // 1 or 2
+    let gameMode = 'ai'; // 'ai' or 'pvp'
+    let aiDifficulty = 'hard'; // 'easy', 'medium', 'hard'
+    let isAnimating = false;
+    let gameOver = false;
+    let moveHistory = []; // Stack of moves {r, c, player}
+    let scores = { p1: 0, p2: 0 };
+    let activeTheme = 'arcade';
+
+    // Match History & Replay State
+    let gameHistory = []; // Array of saved match records
+    let latestMatchId = null;
+    let isReplaying = false;
+    let currentReplayMatch = null;
+    let currentReplayStep = 0;
+    let isReplayPlaying = false;
+    let replayTimer = null;
+    let replaySpeed = 1; // 1x, 2x, 4x
+
+    // DOM Elements
+    const boardGridEl = document.getElementById('board-grid');
+    const boardContainerEl = document.getElementById('board-container');
+    const dropIndicatorZoneEl = document.getElementById('drop-indicator-zone');
+    const dropPreviewTokenEl = document.getElementById('drop-preview-token');
+    const turnDotEl = document.getElementById('turn-dot');
+    const statusTextEl = document.getElementById('status-text');
+    const p1ScoreEl = document.getElementById('p1-score');
+    const p2ScoreEl = document.getElementById('p2-score');
+    const p1CardEl = document.getElementById('p1-card');
+    const p2CardEl = document.getElementById('p2-card');
+    const p2LabelEl = document.getElementById('p2-label');
+    const btnUndoEl = document.getElementById('btn-undo');
+
+    // Replay Elements
+    const normalFooterEl = document.getElementById('normal-footer');
+    const replayFooterEl = document.getElementById('replay-footer');
+    const replaySliderEl = document.getElementById('replay-slider');
+    const replayMoveCounterEl = document.getElementById('replay-move-counter');
+    const iconReplayPlayEl = document.getElementById('icon-replay-play');
+    const btnReplaySpeedEl = document.getElementById('btn-replay-speed');
+    const historyBadgeEl = document.getElementById('history-badge');
+
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // Init App
+    function initApp() {
+      loadHistoryFromStorage();
+      setupEventListeners();
+      resetGame();
+    }
+
+    // Storage Management
+    function loadHistoryFromStorage() {
+      try {
+        const saved = localStorage.getItem('mini_connect4_history');
+        if (saved) {
+          gameHistory = JSON.parse(saved);
+        }
+      } catch (e) {
+        gameHistory = [];
+      }
+      updateHistoryBadge();
+    }
+
+    function saveHistoryToStorage() {
+      try {
+        localStorage.setItem('mini_connect4_history', JSON.stringify(gameHistory));
+      } catch (e) {}
+      updateHistoryBadge();
+    }
+
+    function updateHistoryBadge() {
+      if (gameHistory.length > 0) {
+        historyBadgeEl.textContent = gameHistory.length;
+        historyBadgeEl.classList.remove('hidden');
+      } else {
+        historyBadgeEl.classList.add('hidden');
+      }
+    }
+
+    // Reset Game Board State
+    function resetGame() {
+      if (isReplaying) stopReplay();
+
+      const preset = GRID_PRESETS[currentGridKey];
+      rows = preset.rows;
+      cols = preset.cols;
+      winCount = preset.winCount;
+
+      board = Array.from({ length: rows }, () => Array(cols).fill(0));
+      currentPlayer = 1;
+      gameOver = false;
+      isAnimating = false;
+      moveHistory = [];
+
+      updateUI();
+      renderBoardGrid();
+      updateStatusBadge();
+    }
+
+    // Render Board Grid HTML elements
+    function renderBoardGrid() {
+      boardGridEl.innerHTML = '';
+      boardGridEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const slot = document.createElement('div');
+          slot.className = 'board-slot aspect-square rounded-full relative flex items-center justify-center overflow-hidden cursor-pointer';
+          slot.dataset.row = r;
+          slot.dataset.col = c;
+
+          // Inner token container
+          const token = document.createElement('div');
+          token.className = 'cell-token w-[88%] h-[88%] rounded-full transition-transform duration-200 opacity-0 transform scale-90';
+          token.id = `token-${r}-${c}`;
+          
+          slot.appendChild(token);
+          boardGridEl.appendChild(slot);
+        }
+      }
+    }
+
+    // UI Updates
+    function updateUI() {
+      p1ScoreEl.textContent = scores.p1;
+      p2ScoreEl.textContent = scores.p2;
+
+      p2LabelEl.textContent = gameMode === 'pvp' ? 'Player 2' : `AI (${aiDifficulty.toUpperCase()})`;
+      btnUndoEl.disabled = isReplaying || moveHistory.length === 0 || isAnimating || (gameMode === 'ai' && currentPlayer === 2);
+
+      // Active player card glow
+      if (!isReplaying) {
+        if (currentPlayer === 1) {
+          p1CardEl.classList.add('bg-slate-800/80', 'ring-1', 'ring-rose-500/50');
+          p2CardEl.classList.remove('bg-slate-800/80', 'ring-1', 'ring-yellow-500/50');
+        } else {
+          p2CardEl.classList.add('bg-slate-800/80', 'ring-1', 'ring-yellow-500/50');
+          p1CardEl.classList.remove('bg-slate-800/80', 'ring-1', 'ring-rose-500/50');
+        }
+      }
+    }
+
+    function updateStatusBadge() {
+      if (gameOver && !isReplaying) return;
+
+      if (isReplaying) {
+        turnDotEl.className = 'w-2.5 h-2.5 rounded-full bg-indigo-400 animate-pulse';
+        statusTextEl.textContent = 'Replay Mode';
+        dropPreviewTokenEl.style.opacity = '0';
+        return;
+      }
+
+      dropPreviewTokenEl.className = `absolute w-8 h-8 sm:w-10 sm:h-10 rounded-full ${currentPlayer === 1 ? 'token-p1' : 'token-p2'} transition-all duration-150 transform -translate-x-1/2 opacity-0 pointer-events-none shadow-lg`;
+      
+      turnDotEl.className = `w-2.5 h-2.5 rounded-full ${currentPlayer === 1 ? 'token-p1' : 'token-p2'} animate-ping`;
+
+      if (gameMode === 'ai') {
+        statusTextEl.textContent = currentPlayer === 1 ? 'Your Turn' : 'AI Thinking...';
+      } else {
+        statusTextEl.textContent = currentPlayer === 1 ? "P1's Turn" : "P2's Turn";
+      }
+    }
+
+    // Make Move Controller
+    function handleColumnSelect(col) {
+      if (gameOver || isAnimating || isReplaying) return;
+      if (gameMode === 'ai' && currentPlayer === 2) return; // Block human tapping on AI turn
+
+      const targetRow = getLowestEmptyRow(board, col);
+      if (targetRow === -1) {
+        sounds.playError();
+        triggerHaptic('light');
+        return;
+      }
+
+      executeMove(targetRow, col, currentPlayer);
+    }
+
+    function executeMove(r, c, player) {
+      isAnimating = true;
+      board[r][c] = player;
+      moveHistory.push({ r, c, player });
+
+      // Animate drop
+      const tokenEl = document.getElementById(`token-${r}-${c}`);
+      tokenEl.className = `cell-token w-[88%] h-[88%] rounded-full ${player === 1 ? 'token-p1' : 'token-p2'} animate-drop`;
+      
+      // Calculate drop animation distance for realism
+      const slotHeight = boardGridEl.children[0].getBoundingClientRect().height;
+      const dropOffset = -(r + 1) * slotHeight * 1.2;
+      tokenEl.style.setProperty('--drop-distance', `${dropOffset}px`);
+      tokenEl.classList.remove('opacity-0');
+
+      sounds.playDrop();
+      triggerHaptic('medium');
+
+      setTimeout(() => {
+        tokenEl.classList.remove('animate-drop');
+        isAnimating = false;
+
+        // Check for Win or Draw
+        const winResult = checkWin(board, winCount);
+        if (winResult) {
+          handleGameOver(winResult);
+          return;
+        }
+
+        if (isBoardFull(board)) {
+          handleGameOver({ winner: 0, winningCells: [] });
+          return;
+        }
+
+        // Switch turn
+        currentPlayer = currentPlayer === 1 ? 2 : 1;
+        updateUI();
+        updateStatusBadge();
+
+        // If AI turn, schedule AI move
+        if (!gameOver && gameMode === 'ai' && currentPlayer === 2) {
+          setTimeout(makeAIMove, 350);
+        }
+      }, 420);
+    }
+
+    function handleGameOver(result) {
+      gameOver = true;
+      updateUI();
+
+      // Save match to history
+      const matchRecord = {
+        id: 'match_' + Date.now(),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        dateStr: new Date().toLocaleDateString([], { month: 'short', day: 'numeric' }),
+        gridKey: currentGridKey,
+        gridName: GRID_PRESETS[currentGridKey].name,
+        rows, cols, winCount,
+        gameMode,
+        aiDifficulty,
+        winner: result.winner,
+        moves: [...moveHistory],
+        winningCells: result.winningCells || []
+      };
+
+      latestMatchId = matchRecord.id;
+      gameHistory.unshift(matchRecord);
+      if (gameHistory.length > 20) gameHistory.pop(); // Keep last 20 games
+      saveHistoryToStorage();
+
+      if (result.winner !== 0) {
+        sounds.playWin();
+        triggerHaptic('win');
+
+        // Highlight winning tokens
+        result.winningCells.forEach(([r, c]) => {
+          const t = document.getElementById(`token-${r}-${c}`);
+          if (t) t.classList.add('winning-token');
+        });
+
+        // Update score
+        if (result.winner === 1) scores.p1++;
+        else scores.p2++;
+        updateUI();
+
+        // Trigger victory confetti
+        confetti({
+          particleCount: 80,
+          spread: 60,
+          origin: { y: 0.6 }
+        });
+
+        const winName = result.winner === 1 ? 'Player 1' : (gameMode === 'ai' ? 'AI' : 'Player 2');
+        showGameOverModal(`${winName.toUpperCase()} WINS!`, `${winCount} in a row connected!`, result.winner);
+      } else {
+        sounds.playError();
+        showGameOverModal("IT'S A DRAW!", 'Board is completely filled!', 0);
+      }
+    }
+
+    function showGameOverModal(title, subtitle, winner) {
+      const modal = document.getElementById('modal-gameover');
+      const titleEl = document.getElementById('winner-title');
+      const subEl = document.getElementById('winner-subtitle');
+      const iconContainer = document.getElementById('winner-icon-container');
+
+      titleEl.textContent = title;
+      subEl.textContent = subtitle;
+
+      if (winner === 1) {
+        iconContainer.className = 'w-16 h-16 rounded-full flex items-center justify-center shadow-xl animate-bounce token-p1';
+      } else if (winner === 2) {
+        iconContainer.className = 'w-16 h-16 rounded-full flex items-center justify-center shadow-xl animate-bounce token-p2';
+      } else {
+        iconContainer.className = 'w-16 h-16 rounded-full flex items-center justify-center shadow-xl bg-slate-700 text-slate-300';
+      }
+
+      modal.classList.remove('opacity-0', 'pointer-events-none');
+      modal.firstElementChild.classList.remove('scale-90');
+      modal.firstElementChild.classList.add('scale-100');
+    }
+
+    function hideGameOverModal() {
+      const modal = document.getElementById('modal-gameover');
+      modal.classList.add('opacity-0', 'pointer-events-none');
+      modal.firstElementChild.classList.remove('scale-100');
+      modal.firstElementChild.classList.add('scale-90');
+    }
+
+    // Undo Last Move
+    function undoMove() {
+      if (moveHistory.length === 0 || isAnimating || gameOver || isReplaying) return;
+
+      sounds.playClick();
+      triggerHaptic('light');
+
+      // In AI mode, undo both AI and Human move
+      const movesToUndo = (gameMode === 'ai' && moveHistory.length >= 2) ? 2 : 1;
+
+      for (let i = 0; i < movesToUndo; i++) {
+        if (moveHistory.length === 0) break;
+        const lastMove = moveHistory.pop();
+        board[lastMove.r][lastMove.c] = 0;
+
+        const tokenEl = document.getElementById(`token-${lastMove.r}-${lastMove.c}`);
+        if (tokenEl) {
+          tokenEl.className = 'cell-token w-[88%] h-[88%] rounded-full transition-transform duration-200 opacity-0 transform scale-90';
+        }
+      }
+
+      currentPlayer = moveHistory.length % 2 === 0 ? 1 : 2;
+      gameOver = false;
+      updateUI();
+      updateStatusBadge();
+    }
+
+    // Helper functions for connect 4 rules
+    function getLowestEmptyRow(b, c) {
+      for (let r = rows - 1; r >= 0; r--) {
+        if (b[r][c] === 0) return r;
+      }
+      return -1;
+    }
+
+    function isBoardFull(b) {
+      return b[0].every(cell => cell !== 0);
+    }
+
+    function checkWin(b, targetCount) {
+      const rCount = b.length;
+      const cCount = b[0].length;
+
+      const directions = [
+        [[0, 1]], // Horizontal
+        [[1, 0]], // Vertical
+        [[1, 1]], // Diagonal Down-Right
+        [[-1, 1]] // Diagonal Up-Right
+      ];
+
+      for (let r = 0; r < rCount; r++) {
+        for (let c = 0; c < cCount; c++) {
+          const p = b[r][c];
+          if (p === 0) continue;
+
+          for (const [[dr, dc]] of directions) {
+            let cells = [[r, c]];
+            for (let i = 1; i < targetCount; i++) {
+              const nr = r + dr * i;
+              const nc = c + dc * i;
+              if (nr >= 0 && nr < rCount && nc >= 0 && nc < cCount && b[nr][nc] === p) {
+                cells.push([nr, nc]);
+              } else {
+                break;
+              }
+            }
+            if (cells.length === targetCount) {
+              return { winner: p, winningCells: cells };
+            }
+          }
+        }
+      }
+      return null;
+    }
+
+    // AI Minimax Logic with Alpha-Beta Pruning
+    function makeAIMove() {
+      if (gameOver || isReplaying) return;
+
+      let chosenCol = -1;
+
+      if (aiDifficulty === 'easy') {
+        const validCols = getValidColumns(board);
+        chosenCol = validCols[Math.floor(Math.random() * validCols.length)];
+      } else if (aiDifficulty === 'medium') {
+        chosenCol = getBestMove(board, 2);
+      } else {
+        const depth = rows * cols > 35 ? 4 : 5;
+        chosenCol = getBestMove(board, depth);
+      }
+
+      if (chosenCol !== -1) {
+        const targetRow = getLowestEmptyRow(board, chosenCol);
+        executeMove(targetRow, chosenCol, 2);
+      }
+    }
+
+    function getValidColumns(b) {
+      const valid = [];
+      for (let c = 0; c < cols; c++) {
+        if (b[0][c] === 0) valid.push(c);
+      }
+      return valid;
+    }
+
+    function getBestMove(b, depth) {
+      const validCols = getValidColumns(b);
+      validCols.sort((a, b) => Math.abs(a - cols/2) - Math.abs(b - cols/2));
+
+      let bestScore = -Infinity;
+      let bestCol = validCols[0];
+
+      for (const col of validCols) {
+        const row = getLowestEmptyRow(b, col);
+        b[row][col] = 2; // AI move
+
+        if (checkWin(b, winCount)) {
+          b[row][col] = 0;
+          return col;
+        }
+
+        const score = minimax(b, depth - 1, -Infinity, Infinity, false);
+        b[row][col] = 0;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestCol = col;
+        }
+      }
+
+      for (const col of validCols) {
+        const row = getLowestEmptyRow(b, col);
+        b[row][col] = 1;
+        if (checkWin(b, winCount)) {
+          b[row][col] = 0;
+          return col;
+        }
+        b[row][col] = 0;
+      }
+
+      return bestCol;
+    }
+
+    function minimax(b, depth, alpha, beta, isMaximizing) {
+      const winState = checkWin(b, winCount);
+      if (winState) {
+        return winState.winner === 2 ? (10000 + depth) : (-10000 - depth);
+      }
+      if (isBoardFull(b) || depth === 0) {
+        return evaluateBoardScore(b);
+      }
+
+      const validCols = getValidColumns(b);
+
+      if (isMaximizing) {
+        let maxEval = -Infinity;
+        for (const col of validCols) {
+          const row = getLowestEmptyRow(b, col);
+          b[row][col] = 2;
+          const evaluation = minimax(b, depth - 1, alpha, beta, false);
+          b[row][col] = 0;
+          maxEval = Math.max(maxEval, evaluation);
+          alpha = Math.max(alpha, evaluation);
+          if (beta <= alpha) break;
+        }
+        return maxEval;
+      } else {
+        let minEval = Infinity;
+        for (const col of validCols) {
+          const row = getLowestEmptyRow(b, col);
+          b[row][col] = 1;
+          const evaluation = minimax(b, depth - 1, alpha, beta, true);
+          b[row][col] = 0;
+          minEval = Math.min(minEval, evaluation);
+          beta = Math.min(beta, evaluation);
+          if (beta <= alpha) break;
+        }
+        return minEval;
+      }
+    }
+
+    function evaluateBoardScore(b) {
+      let score = 0;
+      const centerCol = Math.floor(cols / 2);
+      let centerCount = 0;
+      for (let r = 0; r < rows; r++) {
+        if (b[r][centerCol] === 2) centerCount++;
+      }
+      score += centerCount * 3;
+      return score;
+    }
+
+    // =====================================
+    // MATCH REPLAY SYSTEM CONTROLLER
+    // =====================================
+
+    function startReplay(matchId) {
+      const match = gameHistory.find(m => m.id === matchId);
+      if (!match) return;
+
+      sounds.playClick();
+      pauseReplay();
+
+      isReplaying = true;
+      currentReplayMatch = match;
+      currentReplayStep = 0;
+
+      // Set Grid Dimensions to match replay
+      rows = match.rows;
+      cols = match.cols;
+      winCount = match.winCount;
+
+      // Render Replay UI layout
+      renderBoardGrid();
+      normalFooterEl.classList.add('hidden');
+      replayFooterEl.classList.remove('hidden');
+
+      replaySliderEl.min = 0;
+      replaySliderEl.max = match.moves.length;
+      replaySliderEl.value = 0;
+
+      updateStatusBadge();
+      setReplayStep(0, false);
+    }
+
+    function stopReplay() {
+      pauseReplay();
+      isReplaying = false;
+      currentReplayMatch = null;
+
+      replayFooterEl.classList.add('hidden');
+      normalFooterEl.classList.remove('hidden');
+
+      // Restore active grid size
+      const preset = GRID_PRESETS[currentGridKey];
+      rows = preset.rows;
+      cols = preset.cols;
+      winCount = preset.winCount;
+
+      resetGame();
+    }
+
+    function setReplayStep(step, animate = true) {
+      if (!currentReplayMatch) return;
+
+      const totalMoves = currentReplayMatch.moves.length;
+      step = Math.max(0, Math.min(step, totalMoves));
+      currentReplayStep = step;
+
+      replaySliderEl.value = step;
+      replayMoveCounterEl.textContent = `Move ${step} / ${totalMoves}`;
+
+      // Re-build board representation
+      const tempBoard = Array.from({ length: rows }, () => Array(cols).fill(0));
+
+      // Clear current DOM board visual
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const t = document.getElementById(`token-${r}-${c}`);
+          if (t) {
+            t.className = 'cell-token w-[88%] h-[88%] rounded-full transition-transform duration-200 opacity-0 transform scale-90';
+          }
+        }
+      }
+
+      // Populate board up to step
+      for (let i = 0; i < step; i++) {
+        const m = currentReplayMatch.moves[i];
+        tempBoard[m.r][m.c] = m.player;
+        const t = document.getElementById(`token-${m.r}-${m.c}`);
+        if (t) {
+          t.className = `cell-token w-[88%] h-[88%] rounded-full ${m.player === 1 ? 'token-p1' : 'token-p2'}`;
+          t.classList.remove('opacity-0');
+        }
+      }
+
+      // If stepping forward with animation
+      if (animate && step > 0) {
+        const lastMove = currentReplayMatch.moves[step - 1];
+        const lastToken = document.getElementById(`token-${lastMove.r}-${lastMove.c}`);
+        if (lastToken) {
+          lastToken.classList.add('animate-drop');
+          const slotHeight = boardGridEl.children[0].getBoundingClientRect().height;
+          const dropOffset = -(lastMove.r + 1) * slotHeight * 1.2;
+          lastToken.style.setProperty('--drop-distance', `${dropOffset}px`);
+          sounds.playDrop();
+          triggerHaptic('light');
+        }
+      }
+
+      // Highlight winning combination if step reached match end
+      if (step === totalMoves && currentReplayMatch.winner !== 0) {
+        currentReplayMatch.winningCells.forEach(([r, c]) => {
+          const t = document.getElementById(`token-${r}-${c}`);
+          if (t) t.classList.add('winning-token');
+        });
+      }
+    }
+
+    function toggleReplayPlayPause() {
+      if (isReplayPlaying) {
+        pauseReplay();
+      } else {
+        playReplay();
+      }
+    }
+
+    function playReplay() {
+      if (!currentReplayMatch) return;
+      if (currentReplayStep >= currentReplayMatch.moves.length) {
+        currentReplayStep = 0;
+        setReplayStep(0, false);
+      }
+
+      isReplayPlaying = true;
+      iconReplayPlayEl.setAttribute('data-lucide', 'pause');
+      lucide.createIcons();
+
+      const delay = 800 / replaySpeed;
+      replayTimer = setInterval(() => {
+        if (currentReplayStep < currentReplayMatch.moves.length) {
+          currentReplayStep++;
+          setReplayStep(currentReplayStep, true);
+        } else {
+          pauseReplay();
+        }
+      }, delay);
+    }
+
+    function pauseReplay() {
+      isReplayPlaying = false;
+      if (replayTimer) {
+        clearInterval(replayTimer);
+        replayTimer = null;
+      }
+      iconReplayPlayEl.setAttribute('data-lucide', 'play');
+      lucide.createIcons();
+    }
+
+    function cycleReplaySpeed() {
+      const speeds = [1, 2, 4];
+      const nextIdx = (speeds.indexOf(replaySpeed) + 1) % speeds.length;
+      replaySpeed = speeds[nextIdx];
+      btnReplaySpeedEl.textContent = `${replaySpeed}x`;
+
+      if (isReplayPlaying) {
+        pauseReplay();
+        playReplay();
+      }
+    }
+
+    // Render Match History List Modal
+    function renderHistoryList() {
+      const historyListEl = document.getElementById('history-list');
+      historyListEl.innerHTML = '';
+
+      if (gameHistory.length === 0) {
+        historyListEl.innerHTML = `
+          <div class="py-8 flex flex-col items-center justify-center text-center text-slate-500 gap-2">
+            <i data-lucide="inbox" class="w-10 h-10 stroke-1"></i>
+            <p class="text-xs font-semibold">No matches played yet!</p>
+            <p class="text-[10px] text-slate-600">Finish a game to watch your replay.</p>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      gameHistory.forEach((match) => {
+        const item = document.createElement('div');
+        
+        let borderClass = 'border-slate-700';
+        let winText = 'Draw';
+        let winColor = 'text-slate-300';
+
+        if (match.winner === 1) {
+          borderClass = 'border-rose-500/50';
+          winText = 'P1 Victory';
+          winColor = 'text-rose-400';
+        } else if (match.winner === 2) {
+          borderClass = 'border-amber-500/50';
+          winText = match.gameMode === 'ai' ? 'AI Victory' : 'P2 Victory';
+          winColor = 'text-amber-400';
+        }
+
+        const modeTag = match.gameMode === 'ai' ? `vs AI (${match.aiDifficulty.toUpperCase()})` : 'Pass & Play';
+
+        item.className = `p-3 rounded-xl glass-panel border ${borderClass} flex items-center justify-between gap-2 hover:bg-slate-800/80 transition-all`;
+        item.innerHTML = `
+          <div class="flex flex-col gap-1">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold ${winColor}">${winText}</span>
+              <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">${match.gridName}</span>
+            </div>
+            <div class="text-[11px] text-slate-400 flex items-center gap-2">
+              <span>${modeTag}</span>
+              <span>•</span>
+              <span>${match.moves.length} moves</span>
+            </div>
+            <span class="text-[10px] text-slate-500">${match.dateStr} at ${match.timestamp}</span>
+          </div>
+
+          <button data-id="${match.id}" class="btn-watch-replay py-2 px-3 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/40 text-xs font-bold flex items-center gap-1.5 active:scale-95 transition-all">
+            <i data-lucide="tv" class="w-3.5 h-3.5"></i>
+            <span>Replay</span>
+          </button>
+        `;
+
+        historyListEl.appendChild(item);
+      });
+
+      // Attach event listener for watch replay buttons
+      document.querySelectorAll('.btn-watch-replay').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const matchId = e.currentTarget.dataset.id;
+          closeHistoryModal();
+          startReplay(matchId);
+        });
+      });
+
+      lucide.createIcons();
+    }
+
+    function openHistoryModal() {
+      sounds.playClick();
+      renderHistoryList();
+      const modal = document.getElementById('modal-history');
+      modal.classList.remove('opacity-0', 'pointer-events-none');
+      modal.firstElementChild.classList.remove('scale-95');
+      modal.firstElementChild.classList.add('scale-100');
+    }
+
+    function closeHistoryModal() {
+      sounds.playClick();
+      const modal = document.getElementById('modal-history');
+      modal.classList.add('opacity-0', 'pointer-events-none');
+      modal.firstElementChild.classList.remove('scale-100');
+      modal.firstElementChild.classList.add('scale-95');
+    }
+
+    // Touch & Pointer Interaction Logic (Smooth drag & tap targeting)
+    function setupEventListeners() {
+      // History Modal trigger
+      document.getElementById('btn-history').addEventListener('click', openHistoryModal);
+      document.getElementById('btn-close-history').addEventListener('click', closeHistoryModal);
+
+      document.getElementById('btn-clear-history').addEventListener('click', () => {
+        sounds.playClick();
+        gameHistory = [];
+        saveHistoryToStorage();
+        renderHistoryList();
+      });
+
+      // Sound toggle
+      document.getElementById('btn-sound').addEventListener('click', () => {
+        const active = sounds.toggleSound();
+        document.getElementById('icon-sound').setAttribute('data-lucide', active ? 'volume-2' : 'volume-x');
+        lucide.createIcons();
+      });
+
+      // Settings modal toggle
+      const modalSettings = document.getElementById('modal-settings');
+      document.getElementById('btn-settings').addEventListener('click', () => {
+        sounds.playClick();
+        modalSettings.classList.remove('opacity-0', 'pointer-events-none');
+        modalSettings.firstElementChild.classList.remove('scale-95');
+        modalSettings.firstElementChild.classList.add('scale-100');
+      });
+
+      document.getElementById('btn-close-settings').addEventListener('click', () => {
+        sounds.playClick();
+        modalSettings.classList.add('opacity-0', 'pointer-events-none');
+        modalSettings.firstElementChild.classList.remove('scale-100');
+        modalSettings.firstElementChild.classList.add('scale-95');
+      });
+
+      // Restart & Play Again
+      document.getElementById('btn-restart').addEventListener('click', () => {
+        sounds.playClick();
+        triggerHaptic('light');
+        resetGame();
+      });
+
+      document.getElementById('btn-play-again').addEventListener('click', () => {
+        sounds.playClick();
+        hideGameOverModal();
+        resetGame();
+      });
+
+      // Gameover Replay Button
+      document.getElementById('btn-gameover-replay').addEventListener('click', () => {
+        sounds.playClick();
+        hideGameOverModal();
+        if (latestMatchId) {
+          startReplay(latestMatchId);
+        }
+      });
+
+      // Replay Controller Toolbar Listeners
+      document.getElementById('btn-exit-replay').addEventListener('click', stopReplay);
+      document.getElementById('btn-replay-play').addEventListener('click', toggleReplayPlayPause);
+      
+      document.getElementById('btn-replay-prev').addEventListener('click', () => {
+        pauseReplay();
+        setReplayStep(currentReplayStep - 1, true);
+      });
+
+      document.getElementById('btn-replay-next').addEventListener('click', () => {
+        pauseReplay();
+        setReplayStep(currentReplayStep + 1, true);
+      });
+
+      document.getElementById('btn-replay-start').addEventListener('click', () => {
+        pauseReplay();
+        setReplayStep(0, false);
+      });
+
+      document.getElementById('btn-replay-end').addEventListener('click', () => {
+        pauseReplay();
+        if (currentReplayMatch) {
+          setReplayStep(currentReplayMatch.moves.length, false);
+        }
+      });
+
+      btnReplaySpeedEl.addEventListener('click', cycleReplaySpeed);
+
+      replaySliderEl.addEventListener('input', (e) => {
+        pauseReplay();
+        setReplayStep(parseInt(e.target.value, 10), false);
+      });
+
+      // Undo button
+      btnUndoEl.addEventListener('click', undoMove);
+
+      // Mode Selection
+      document.getElementById('mode-ai').addEventListener('click', () => {
+        sounds.playClick();
+        gameMode = 'ai';
+        updateModeBtns();
+        resetGame();
+      });
+
+      document.getElementById('mode-pvp').addEventListener('click', () => {
+        sounds.playClick();
+        gameMode = 'pvp';
+        updateModeBtns();
+        resetGame();
+      });
+
+      // AI Difficulty Selection
+      document.querySelectorAll('.btn-diff').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          sounds.playClick();
+          aiDifficulty = e.currentTarget.dataset.diff;
+          updateDiffBtns();
+          resetGame();
+        });
+      });
+
+      // Grid Size Selection
+      document.querySelectorAll('.btn-grid').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          sounds.playClick();
+          currentGridKey = e.currentTarget.dataset.grid;
+          updateGridBtns();
+          resetGame();
+        });
+      });
+
+      // Theme Selection
+      document.querySelectorAll('.btn-theme').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          sounds.playClick();
+          setTheme(e.currentTarget.dataset.theme);
+        });
+      });
+
+      // Reset Scores
+      document.getElementById('btn-reset-scores').addEventListener('click', () => {
+        sounds.playClick();
+        scores = { p1: 0, p2: 0 };
+        updateUI();
+      });
+
+      // Touch / Mouse Column Hover & Drop Handler
+      function getColumnFromX(clientX) {
+        const rect = boardGridEl.getBoundingClientRect();
+        if (clientX < rect.left || clientX > rect.right) return -1;
+        const relativeX = clientX - rect.left;
+        const colWidth = rect.width / cols;
+        return Math.floor(relativeX / colWidth);
+      }
+
+      function updateDropPreview(col) {
+        if (col < 0 || col >= cols || gameOver || isAnimating || isReplaying || (gameMode === 'ai' && currentPlayer === 2)) {
+          dropPreviewTokenEl.style.opacity = '0';
+          return;
+        }
+
+        const rect = boardGridEl.getBoundingClientRect();
+        const colWidth = rect.width / cols;
+        const targetX = (col + 0.5) * colWidth;
+
+        dropPreviewTokenEl.style.transform = `translateX(${targetX - 20}px)`;
+        dropPreviewTokenEl.style.opacity = '1';
+      }
+
+      // Pointer event listeners on board
+      boardContainerEl.addEventListener('pointermove', (e) => {
+        const col = getColumnFromX(e.clientX);
+        updateDropPreview(col);
+      });
+
+      boardContainerEl.addEventListener('pointerleave', () => {
+        dropPreviewTokenEl.style.opacity = '0';
+      });
+
+      boardContainerEl.addEventListener('pointerdown', (e) => {
+        const col = getColumnFromX(e.clientX);
+        if (col !== -1) {
+          updateDropPreview(col);
+        }
+      });
+
+      boardContainerEl.addEventListener('pointerup', (e) => {
+        const col = getColumnFromX(e.clientX);
+        if (col !== -1) {
+          handleColumnSelect(col);
+        }
+      });
+    }
+
+    // Modal UI Button state sync
+    function updateModeBtns() {
+      const modeAi = document.getElementById('mode-ai');
+      const modePvp = document.getElementById('mode-pvp');
+      const diffSection = document.getElementById('ai-diff-section');
+
+      if (gameMode === 'ai') {
+        modeAi.className = 'py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all border-indigo-500 bg-indigo-600/20 text-white';
+        modePvp.className = 'py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all border-slate-700 bg-slate-800/50 text-slate-400';
+        diffSection.style.display = 'flex';
+      } else {
+        modePvp.className = 'py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all border-indigo-500 bg-indigo-600/20 text-white';
+        modeAi.className = 'py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all border-slate-700 bg-slate-800/50 text-slate-400';
+        diffSection.style.display = 'none';
+      }
+    }
+
+    function updateDiffBtns() {
+      document.querySelectorAll('.btn-diff').forEach(btn => {
+        if (btn.dataset.diff === aiDifficulty) {
+          btn.className = 'btn-diff py-2 px-2 rounded-xl border text-xs font-bold border-indigo-500 bg-indigo-600/20 text-white';
+        } else {
+          btn.className = 'btn-diff py-2 px-2 rounded-xl border text-xs font-bold border-slate-700 bg-slate-800/50 text-slate-400';
+        }
+      });
+    }
+
+    function updateGridBtns() {
+      document.querySelectorAll('.btn-grid').forEach(btn => {
+        if (btn.dataset.grid === currentGridKey) {
+          btn.className = 'btn-grid py-2 px-2 rounded-xl border text-xs font-bold border-indigo-500 bg-indigo-600/20 text-white flex flex-col items-center';
+        } else {
+          btn.className = 'btn-grid py-2 px-2 rounded-xl border text-xs font-bold border-slate-700 bg-slate-800/50 text-slate-400 flex flex-col items-center';
+        }
+      });
+    }
+
+    function setTheme(theme) {
+      activeTheme = theme;
+      document.body.className = `min-h-screen text-white flex flex-col items-center justify-between p-3 sm:p-5 select-none overflow-x-hidden theme-${theme}`;
+      
+      document.querySelectorAll('.btn-theme').forEach(btn => {
+        if (btn.dataset.theme === theme) {
+          btn.classList.add('border-indigo-500');
+          btn.classList.remove('border-slate-700');
+        } else {
+          btn.classList.remove('border-indigo-500');
+          btn.classList.add('border-slate-700');
+        }
+      });
+    }
+
+    // Launch Application
+    window.onload = initApp;
+  </script>
+</body>
+</html>
